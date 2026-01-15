@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -7,9 +8,12 @@ import 'package:provider/provider.dart';
 import '../models/player_model.dart';
 import '../services/firebase_service.dart';
 import '../theme/theme_provider.dart';
+import 'player_list_screen.dart';
 
 class RegisterPlayerScreen extends StatefulWidget {
-  const RegisterPlayerScreen({super.key});
+  final Player? player;
+
+  const RegisterPlayerScreen({super.key, this.player});
 
   @override
   State<RegisterPlayerScreen> createState() => _RegisterPlayerScreenState();
@@ -22,12 +26,29 @@ class _RegisterPlayerScreenState extends State<RegisterPlayerScreen> {
   final _emailController = TextEditingController();
   String? _battingHand;
   String? _bowlingHand;
+  String? _role;
   DateTime? _dob;
   XFile? _imageFile;
+  String? _imageBase64;
   bool _isLoading = false;
 
   final FirebaseService _firebaseService = FirebaseService();
   final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.player != null) {
+      _nameController.text = widget.player!.name;
+      _phoneController.text = widget.player!.phone;
+      _emailController.text = widget.player!.email;
+      _battingHand = widget.player!.battingHand;
+      _bowlingHand = widget.player!.bowlingHand;
+      _role = widget.player!.role;
+      _dob = widget.player!.dob;
+      _imageBase64 = widget.player!.imageBase64;
+    }
+  }
 
   @override
   void dispose() {
@@ -42,10 +63,13 @@ class _RegisterPlayerScreenState extends State<RegisterPlayerScreen> {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 600,
+        imageQuality: 70, // Optimize size for Base64 storage
       );
       if (pickedFile != null) {
+        final bytes = await pickedFile.readAsBytes();
         setState(() {
           _imageFile = pickedFile;
+          _imageBase64 = base64Encode(bytes);
         });
       }
     } catch (e) {
@@ -87,28 +111,41 @@ class _RegisterPlayerScreenState extends State<RegisterPlayerScreen> {
 
       try {
         final player = Player(
+          id: widget.player?.id, // Preserve ID for updates
           name: _nameController.text.trim(),
           phone: _phoneController.text.trim(),
           email: _emailController.text.trim(),
           battingHand: _battingHand,
           bowlingHand: _bowlingHand,
+          role: _role,
           dob: _dob,
-          photoUrl: null, 
+          imageBase64: _imageBase64,
+          photoUrl: '', // Ensure not null
         );
 
-        await _firebaseService.addPlayer(player);
+        if (widget.player == null) {
+          await _firebaseService.addPlayer(player);
+        } else {
+          await _firebaseService.updatePlayer(player);
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Player registered successfully!')),
+            SnackBar(content: Text(widget.player == null ? 'Player registered successfully!' : 'Player updated successfully!')),
           );
-          _formKey.currentState!.reset();
-          setState(() {
-             _dob = null;
-             _imageFile = null;
-             _battingHand = null;
-             _bowlingHand = null;
-          });
+          if (widget.player == null) { 
+             _formKey.currentState!.reset();
+             setState(() {
+                _dob = null;
+                _imageFile = null;
+                _imageBase64 = null;
+                _battingHand = null;
+                _bowlingHand = null;
+                _role = null;
+             });
+          } else {
+             Navigator.pop(context); // Go back if editing
+          }
         }
       } catch (e) {
         if (mounted) {
@@ -130,13 +167,22 @@ class _RegisterPlayerScreenState extends State<RegisterPlayerScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      extendBodyBehindAppBar: false, // Changed to false for cleaner layout with SafeArea
+      extendBodyBehindAppBar: true, // Extended for the background splash
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          if (widget.player == null) // Only show on registration screen
+          IconButton(
+            icon: const Icon(Icons.list_alt_rounded),
+            tooltip: 'View Players',
+            onPressed: () {
+               Navigator.push(context, MaterialPageRoute(builder: (context) => PlayerListScreen())); 
+            },
+          ),
           IconButton(
             icon: Icon(isDarkMode ? Icons.light_mode_rounded : Icons.nightlight_round),
             onPressed: () {
@@ -147,206 +193,240 @@ class _RegisterPlayerScreenState extends State<RegisterPlayerScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: SafeArea(
-        child: _isLoading
-            ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
-            : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10.0),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header
-                      Text(
-                        'Sign up',
-                        style: theme.textTheme.displayLarge?.copyWith(
-                          fontSize: 40,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Join the team and start your journey.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          height: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Photo Upload (Simplified)
-                      Center(
-                        child: GestureDetector(
-                          onTap: _pickImage,
-                          child: Container(
-                            width: 100,
-                            height: 100,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.surface,
-                              shape: BoxShape.circle,
-                              image: _imageFile != null
-                                  ? DecorationImage(
-                                      image: kIsWeb
-                                          ? NetworkImage(_imageFile!.path)
-                                          : FileImage(File(_imageFile!.path)) as ImageProvider,
-                                      fit: BoxFit.cover,
-                                    )
-                                  : null,
-                              border: Border.all(
-                                color: _imageFile == null ? theme.colorScheme.surface : theme.primaryColor,
-                                width: 2,
+      body: Stack(
+        children: [
+           // Consistent Background Splash
+           Positioned(
+            top: -100,
+            right: -50,
+            child: Container(
+              width: size.width * 1.2,
+              height: size.width * 1.2,
+              decoration: BoxDecoration(
+                color: theme.primaryColor.withOpacity(0.05),
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+          
+          SafeArea(
+            child: _isLoading
+                ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+                : SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 10.0),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header
+                          Text(
+                            widget.player == null ? 'Add Player' : 'Edit Profile',
+                            style: theme.textTheme.displayLarge?.copyWith(
+                              fontSize: 40,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            widget.player == null ? 'Join the team and start your journey.' : 'Update your player details.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              height: 1.5,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+    
+                          // Photo Upload (Simplified)
+                          Center(
+                            child: GestureDetector(
+                              onTap: _pickImage,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  shape: BoxShape.circle,
+                                  image: _imageBase64 != null
+                                      ? DecorationImage(
+                                          image: MemoryImage(base64Decode(_imageBase64!)),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                  border: Border.all(
+                                    color: _imageFile == null ? theme.colorScheme.surface : theme.primaryColor,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: _imageFile == null
+                                    ? Icon(
+                                        Icons.add_a_photo_outlined,
+                                        size: 30,
+                                        color: theme.colorScheme.onSurface.withOpacity(0.5),
+                                      )
+                                    : null,
                               ),
                             ),
-                            child: _imageFile == null
-                                ? Icon(
-                                    Icons.add_a_photo_outlined,
-                                    size: 30,
-                                    color: theme.colorScheme.onSurface.withOpacity(0.5),
-                                  )
-                                : null,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                       child: Text(
-                         'Add Profile Photo', 
-                         style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
-                       )
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Fields
-                      _buildLabel(theme, "Full Name"),
-                      TextFormField(
-                        controller: _nameController,
-                        style: theme.textTheme.bodyLarge,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          hintText: "Enter your full name",
-                        ),
-                        validator: (value) =>
-                            value == null || value.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 20),
-
-                      _buildLabel(theme, "Phone Number"),
-                      TextFormField(
-                        controller: _phoneController,
-                        style: theme.textTheme.bodyLarge,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          hintText: "Enter your phone number",
-                        ),
-                        validator: (value) =>
-                            value == null || value.isEmpty ? 'Required' : null,
-                      ),
-                      const SizedBox(height: 20),
-
-                      _buildLabel(theme, "Email Address"),
-                      TextFormField(
-                        controller: _emailController,
-                        style: theme.textTheme.bodyLarge,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          hintText: "Enter your email",
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) return 'Required';
-                          if (!value.contains('@')) return 'Invalid email';
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 20),
-
-                       // Row for Hands to save space and look cool
-                       Row(
-                         children: [
-                           Expanded(
-                             child: Column(
-                               crossAxisAlignment: CrossAxisAlignment.start,
-                               children: [
-                                  _buildLabel(theme, "Batting Hand"),
-                                  DropdownButtonFormField<String>(
-                                    value: _battingHand,
-                                    padding: EdgeInsets.zero,
-                                    decoration: const InputDecoration(
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                    ),
-                                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                                    items: ['Right Hand', 'Left Hand'].map((String value) {
-                                      return DropdownMenuItem<String>(
-                                        value: value,
-                                        child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-                                      );
-                                    }).toList(),
-                                    onChanged: (newValue) => setState(() => _battingHand = newValue),
-                                    validator: (value) => value == null ? 'Required' : null,
-                                  ),
-                               ],
-                             ),
-                           ),
-                           const SizedBox(width: 16),
-                           Expanded(
-                             child: Column(
-                               crossAxisAlignment: CrossAxisAlignment.start,
-                               children: [
-                                  _buildLabel(theme, "Bowling Hand"),
-                                  DropdownButtonFormField<String>(
-                                    value: _bowlingHand,
-                                    decoration: const InputDecoration(
-                                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                    ),
-                                    icon: const Icon(Icons.keyboard_arrow_down_rounded),
-                                    items: ['Right Arm', 'Left Arm'].map((String value) {
-                                      return DropdownMenuItem<String>(
-                                        value: value,
-                                        child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
-                                      );
-                                    }).toList(),
-                                    onChanged: (newValue) => setState(() => _bowlingHand = newValue),
-                                    validator: (value) => value == null ? 'Required' : null,
-                                  ),
-                               ],
-                             ),
-                           ),
-                         ],
-                       ),
-                      const SizedBox(height: 20),
-
-                      _buildLabel(theme, "Date of Birth"),
-                      InkWell(
-                        onTap: () => _selectDate(context),
-                        child: IgnorePointer( // To propagate tap to InkWell
-                          child: TextFormField(
-                            controller: TextEditingController(
-                                text: _dob == null
-                                    ? ''
-                                    : DateFormat('MMMM d, yyyy').format(_dob!)),
-                             style: theme.textTheme.bodyLarge,
+                          const SizedBox(height: 8),
+                          Center(
+                           child: Text(
+                             'Add Profile Photo', 
+                             style: theme.textTheme.bodyMedium?.copyWith(fontSize: 12),
+                           )
+                          ),
+                          const SizedBox(height: 32),
+    
+                          // Fields
+                          _buildLabel(theme, "Full Name"),
+                          TextFormField(
+                            controller: _nameController,
+                            style: theme.textTheme.bodyLarge,
+                            textCapitalization: TextCapitalization.words,
                             decoration: const InputDecoration(
-                              hintText: "Select Date",
-                              suffixIcon: Icon(Icons.calendar_today_rounded, size: 20),
+                              hintText: "Enter your full name",
                             ),
-                            validator: (value) => _dob == null ? 'Required' : null,
+                            validator: (value) =>
+                                value == null || value.isEmpty ? 'Required' : null,
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 40),
+                          const SizedBox(height: 20),
+    
+                          _buildLabel(theme, "Phone Number"),
+                          TextFormField(
+                            controller: _phoneController,
+                            style: theme.textTheme.bodyLarge,
+                            keyboardType: TextInputType.phone,
+                            decoration: const InputDecoration(
+                              hintText: "Enter your phone number",
+                            ),
+                            validator: (value) =>
+                                value == null || value.isEmpty ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 20),
+    
+                          _buildLabel(theme, "Email Address"),
+                          TextFormField(
+                            controller: _emailController,
+                            style: theme.textTheme.bodyLarge,
+                            keyboardType: TextInputType.emailAddress,
+                            decoration: const InputDecoration(
+                              hintText: "Enter your email",
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) return 'Required';
+                              if (!value.contains('@')) return 'Invalid email';
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 20),
 
-                      // Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 56, // Taller button
-                        child: FilledButton(
-                          onPressed: _submitForm,
-                          child: const Text('Register'),
-                        ),
+                          _buildLabel(theme, "Player Role"),
+                          DropdownButtonFormField<String>(
+                            value: _role,
+                            decoration: const InputDecoration(
+                              hintText: "Select Player Role",
+                            ),
+                            items: ['Batter', 'Bowler', 'Allrounder', 'Wicket Keeper Batter']
+                                .map((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(value, style: Theme.of(context).textTheme.bodyLarge),
+                              );
+                            }).toList(),
+                            onChanged: (newValue) => setState(() => _role = newValue),
+                            validator: (value) => value == null ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 20),
+    
+                           // Row for Hands to save space and look cool
+                           Row(
+                             children: [
+                               Expanded(
+                                 child: Column(
+                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                   children: [
+                                      _buildLabel(theme, "Batting Hand"),
+                                      DropdownButtonFormField<String>(
+                                        value: _battingHand,
+                                        padding: EdgeInsets.zero,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                        ),
+                                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                                        items: ['Right Hand', 'Left Hand'].map((String value) {
+                                          return DropdownMenuItem<String>(
+                                            value: value,
+                                            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+                                          );
+                                        }).toList(),
+                                        onChanged: (newValue) => setState(() => _battingHand = newValue),
+                                        validator: (value) => value == null ? 'Required' : null,
+                                      ),
+                                   ],
+                                 ),
+                               ),
+                               const SizedBox(width: 16),
+                               Expanded(
+                                 child: Column(
+                                   crossAxisAlignment: CrossAxisAlignment.start,
+                                   children: [
+                                      _buildLabel(theme, "Bowling Hand"),
+                                      DropdownButtonFormField<String>(
+                                        value: _bowlingHand,
+                                        decoration: const InputDecoration(
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                        ),
+                                        icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                                        items: ['Right Arm', 'Left Arm'].map((String value) {
+                                          return DropdownMenuItem<String>(
+                                            value: value,
+                                            child: Text(value, style: Theme.of(context).textTheme.bodyMedium),
+                                          );
+                                        }).toList(),
+                                        onChanged: (newValue) => setState(() => _bowlingHand = newValue),
+                                        validator: (value) => value == null ? 'Required' : null,
+                                      ),
+                                   ],
+                                 ),
+                               ),
+                             ],
+                           ),
+                          const SizedBox(height: 20),
+    
+                          _buildLabel(theme, "Date of Birth"),
+                          InkWell(
+                            onTap: () => _selectDate(context),
+                            child: IgnorePointer( // To propagate tap to InkWell
+                              child: TextFormField(
+                                controller: TextEditingController(
+                                    text: _dob == null
+                                        ? ''
+                                        : DateFormat('MMMM d, yyyy').format(_dob!)),
+                                 style: theme.textTheme.bodyLarge,
+                                decoration: const InputDecoration(
+                                  hintText: "Select Date",
+                                  suffixIcon: Icon(Icons.calendar_today_rounded, size: 20),
+                                ),
+                                validator: (value) => _dob == null ? 'Required' : null,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 40),
+    
+                          // Button
+                          SizedBox(
+                            width: double.infinity,
+                            height: 56, // Taller button
+                            child: FilledButton(
+                              onPressed: _submitForm,
+                              child: Text(widget.player == null ? 'Register' : 'Save Changes'),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                        ],
                       ),
-                      const SizedBox(height: 24),
-                    ],
+                    ),
                   ),
-                ),
-              ),
+          ),
+        ],
       ),
     );
   }

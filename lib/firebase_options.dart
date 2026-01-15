@@ -47,28 +47,27 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBYrSRsnfxgKwWZHWtL7Q2ZolpiTCfVkHA',
-    appId: '1:505375833844:web:a876212fcf5458a61028a1',
-    messagingSenderId: '505375833844',
-    projectId: 'creg-18c8f',
-    authDomain: 'creg-18c8f.firebaseapp.com',
-    storageBucket: 'creg-18c8f.firebasestorage.app',
-    measurementId: 'G-G2V5DM77QE',
+    apiKey: 'AIzaSyA0bzOKu3YGe7CkCoWFEOFfhhG5baMe-6I',
+    appId: '1:744747366430:web:c459f76205ef760a23160f',
+    messagingSenderId: '744747366430',
+    projectId: 'creg-7df5b',
+    authDomain: 'creg-7df5b.firebaseapp.com',
+    storageBucket: 'creg-7df5b.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'TODO_ANDROID_API_KEY',
     appId: 'TODO_ANDROID_APP_ID',
-    messagingSenderId: '505375833844',
-    projectId: 'creg-18c8f',
-    storageBucket: 'creg-18c8f.firebasestorage.app',
+    messagingSenderId: '744747366430',
+    projectId: 'creg-7df5b',
+    storageBucket: 'creg-7df5b.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'TODO_IOS_API_KEY',
     appId: 'TODO_IOS_APP_ID',
-    messagingSenderId: '505375833844',
-    projectId: 'creg-18c8f',
-    storageBucket: 'creg-18c8f.firebasestorage.app',
+    messagingSenderId: '744747366430',
+    projectId: 'creg-7df5b',
+    storageBucket: 'creg-7df5b.firebasestorage.app',
   );
 }
